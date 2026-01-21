@@ -7,6 +7,11 @@ on:
   repository_dispatch:
     types: [new-release]
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   sync-pdfs:
     runs-on: ubuntu-latest
@@ -16,6 +21,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
           
       - name: Fetch PDFs from source repo
         env:
@@ -115,10 +121,10 @@ jobs:
             sed -i "s|PDF_NAME|$filename|g" "${filename}.html"
           done
           
-      - name: Commit and push
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add pdfs/ *.html
-          git diff --staged --quiet || git commit -m "Update PDFs from latest release"
-          git push origin gh-pages || git push origin HEAD:gh-pages --force
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          publish_branch: gh-pages
+          force_orphan: true
