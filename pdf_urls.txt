@@ -1,0 +1,2 @@
+https://github.com/GourangaDasSamrat/latex-resume-ci/releases/download/v8/frontend-resume.pdf
+https://github.com/GourangaDasSamrat/latex-resume-ci/releases/download/v8/fullstack-resume.pdf
