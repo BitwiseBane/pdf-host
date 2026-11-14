@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Viewer - Resume Collection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 3rem;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .pdf-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        
+        .pdf-card {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        
+        .pdf-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+        
+        .pdf-icon {
+            font-size: 4rem;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        
+        .pdf-name {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .pdf-type {
+            text-align: center;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.5rem;
+            margin-top: 3rem;
+        }
+        
+        .error {
+            background: #ff6b6b;
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 10px;
+            text-align: center;
+            margin-top: 2rem;
+        }
+        
+        .viewer-mode {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .viewer-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .viewer-header h2 {
+            font-size: 1.5rem;
+        }
+        
+        .viewer-controls {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid white;
+            padding: 0.5rem 1.5rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn:hover {
+            background: white;
+            color: #667eea;
+        }
+        
+        .pdf-viewer {
+            width: 100%;
+            height: 80vh;
+            border: none;
+        }
+        
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            .header h1 { font-size: 2rem; }
+            .pdf-grid { grid-template-columns: 1fr; }
+            .viewer-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="app">
+        <div class="header">
+            <h1>📚 PDF Collection</h1>
+            <p>আপনার সব resume এক জায়গায়</p>
+        </div>
+        <div id="content">
+            <div class="loading">লোড হচ্ছে...</div>
+        </div>
+    </div>
+
+    <script>
+        const REPO_OWNER = 'GourangaDasSamrat';
+        const REPO_NAME = 'latex-resume-ci';
+        const GITHUB_PAGES_URL = window.location.origin;
+
+        // Router
+        class Router {
+            constructor() {
+                this.routes = {};
+                window.addEventListener('popstate', () => this.handleRoute());
+            }
+
+            on(path, handler) {
+                this.routes[path] = handler;
+            }
+
+            navigate(path) {
+                window.history.pushState({}, '', path);
+                this.handleRoute();
+            }
+
+            handleRoute() {
+                const path = window.location.pathname;
+                const pdfName = path.substring(1) || 'home';
+                
+                if (pdfName === 'home' || pdfName === '' || pdfName === 'index.html') {
+                    this.routes['home']();
+                } else {
+                    this.routes['pdf'](pdfName);
+                }
+            }
+
+            start() {
+                this.handleRoute();
+            }
+        }
+
+        // PDF Manager
+        class PDFManager {
+            constructor() {
+                this.pdfs = [];
+                this.router = new Router();
+                this.setupRoutes();
+            }
+
+            setupRoutes() {
+                this.router.on('home', () => this.showHome());
+                this.router.on('pdf', (name) => this.showPDF(name));
+            }
+
+            async fetchPDFs() {
+                try {
+                    const response = await fetch(
+                        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`
+                    );
+                    const data = await response.json();
+                    
+                    this.pdfs = data.assets
+                        .filter(asset => asset.name.endsWith('.pdf'))
+                        .map(asset => ({
+                            name: asset.name.replace('.pdf', ''),
+                            url: asset.browser_download_url,
+                            downloadUrl: asset.browser_download_url
+                        }));
+                    
+                    return this.pdfs;
+                } catch (error) {
+                    console.error('Error fetching PDFs:', error);
+                    return [];
+                }
+            }
+
+            showHome() {
+                const content = document.getElementById('content');
+                content.innerHTML = '<div class="loading">লোড হচ্ছে...</div>';
+                
+                this.fetchPDFs().then(pdfs => {
+                    if (pdfs.length === 0) {
+                        content.innerHTML = `
+                            <div class="error">
+                                ⚠️ কোনো PDF পাওয়া যায়নি। দয়া করে পরে আবার চেষ্টা করুন।
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    content.innerHTML = `
+                        <div class="pdf-grid">
+                            ${pdfs.map(pdf => `
+                                <a href="/${pdf.name}" class="pdf-card" onclick="event.preventDefault(); app.router.navigate('/${pdf.name}');">
+                                    <div class="pdf-icon">📄</div>
+                                    <div class="pdf-name">${pdf.name}</div>
+                                    <div class="pdf-type">PDF Document</div>
+                                </a>
+                            `).join('')}
+                        </div>
+                    `;
+                });
+            }
+
+            showPDF(name) {
+                const content = document.getElementById('content');
+                const pdf = this.pdfs.find(p => p.name === name);
+                
+                if (!pdf) {
+                    // Try to fetch if not in cache
+                    this.fetchPDFs().then(() => {
+                        const foundPdf = this.pdfs.find(p => p.name === name);
+                        if (foundPdf) {
+                            this.renderPDFViewer(foundPdf);
+                        } else {
+                            content.innerHTML = `
+                                <div class="error">
+                                    ⚠️ "${name}" PDF খুঁজে পাওয়া যায়নি।
+                                    <br><br>
+                                    <a href="/" class="btn" onclick="event.preventDefault(); app.router.navigate('/');">← হোম পেজে ফিরে যান</a>
+                                </div>
+                            `;
+                        }
+                    });
+                    return;
+                }
+
+                this.renderPDFViewer(pdf);
+            }
+
+            renderPDFViewer(pdf) {
+                const content = document.getElementById('content');
+                const encodedUrl = encodeURIComponent(pdf.url);
+                
+                content.innerHTML = `
+                    <div class="viewer-mode">
+                        <div class="viewer-header">
+                            <h2>📄 ${pdf.name}</h2>
+                            <div class="viewer-controls">
+                                <a href="/" class="btn" onclick="event.preventDefault(); app.router.navigate('/');">← সব PDF</a>
+                                <a href="${pdf.downloadUrl}" download class="btn">⬇️ ডাউনলোড</a>
+                            </div>
+                        </div>
+                        <iframe 
+                            class="pdf-viewer"
+                            src="https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodedUrl}"
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                `;
+            }
+
+            init() {
+                this.router.start();
+            }
+        }
+
+        // Initialize app
+        const app = new PDFManager();
+        app.init();
+    </script>
+</body>
+</html>
